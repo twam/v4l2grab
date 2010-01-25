@@ -1,5 +1,5 @@
 /***************************************************************************
- *   v4l2grab Version 0.2                                                  *
+ *   v4l2grab Version 0.2a                                                 *
  *   Copyright (C) 2009 by Tobias Müller                                   *
  *   Tobias_Mueller@twam.info                                              *
  *                                                                         *
@@ -239,6 +239,9 @@ static void imageProcess(const void* p)
 
 	// write jpeg
 	jpegWrite(dst);
+
+	// free temporary image
+	free(dst);
 }
 
 /**
