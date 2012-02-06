@@ -1,6 +1,6 @@
 /***************************************************************************
- *   v4l2grab Version 0.2a                                                 *
- *   Copyright (C) 2009 by Tobias Müller                                   *
+ *   v4l2grab Version 0.3                                                  *
+ *   Copyright (C) 2012 by Tobias Müller                                   *
  *   Tobias_Mueller@twam.info                                              *
  *                                                                         *
  *   based on V4L2 Specification, Appendix B: Video Capture Example        *
@@ -21,16 +21,6 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-
-
-// use ITU-R float conversion for YUV422toRGB888 by default
-#if !defined(ITU_R_FLOAT) && !defined(ITU_R_INT) && !defined(NTSC)
-#define ITU_R_FLOAT
-#endif
-
-#if ((defined(ITU_R_FLOAT)) && (defined(ITU_R_INT)) && (defined(NTSC))) || ((defined(ITU_R_FLOAT)) && (defined(ITU_R_INT))) || ((defined(ITU_R_FLOAT)) && (defined(NTSC))) ||  ((defined(ITU_R_INT)) && (defined(NTSC)))
-#error Only one conversion for YUV422toRGB888 is allowed!
-#endif
 
 // compile with all three access methods
 #if !defined(IO_READ) && !defined(IO_MMAP) && !defined(IO_USERPTR)
@@ -56,6 +46,7 @@
 #include <asm/types.h>
 #include <linux/videodev2.h>
 #include <jpeglib.h>
+#include "yuv.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 
@@ -88,115 +79,6 @@ static unsigned int height = 480;
 static unsigned char jpegQuality = 70;
 static char* jpegFilename = NULL;
 static char* deviceName = "/dev/video0";
-
-/**
-	Convert from YUV422 format to RGB888. Formulae are described on http://en.wikipedia.org/wiki/YUV
-
-	\param width width of image
-	\param height height of image
-	\param src source
-	\param dst destination
-*/
-static void YUV422toRGB888(int width, int height, unsigned char *src, unsigned char *dst)
-{
-	int line, column;
-	unsigned char *py, *pu, *pv;
-	unsigned char *tmp = dst;
-
-	/* In this format each four bytes is two pixels. Each four bytes is two Y's, a Cb and a Cr.
-	   Each Y goes to one of the pixels, and the Cb and Cr belong to both pixels. */
-	py = src;
-	pu = src + 1;
-	pv = src + 3;
-
-	#define CLIP(x) ( (x)>=0xFF ? 0xFF : ( (x) <= 0x00 ? 0x00 : (x) ) )
-
-	for (line = 0; line < height; ++line) {
-		for (column = 0; column < width; ++column) {
-#ifdef ITU_R_FLOAT
-			// ITU-R float
-			*tmp++ = CLIP((double)*py + 1.402*((double)*pv-128.0));
-			*tmp++ = CLIP((double)*py - 0.344*((double)*pu-128.0) - 0.714*((double)*pv-128.0));
-			*tmp++ = CLIP((double)*py + 1.772*((double)*pu-128.0));
-#endif
-
-#ifdef ITU_R_INT
-			// ITU-R integer
-			*tmp++ = CLIP( *py + (*pv-128) + ((*pv-128) >> 2) + ((*pv-128) >> 3) + ((*pv-128) >> 5) );
-			*tmp++ = CLIP( *py - (((*pu-128) >> 2) + ((*pu-128) >> 4) + ((*pu-128) >> 5)) - (((*pv-128) >> 1) + ((*pv-128) >> 3) + ((*pv-128) >> 4) + ((*pv-128) >> 5)) );  // 52 58 
-			*tmp++ = CLIP( *py + (*pu-128) + ((*pu-128) >> 1) + ((*pu-128) >> 2) + ((*pu-128) >> 6) );
-#endif
-
-#ifdef NTSC
-			// NTSC integer
-			*tmp++ = CLIP( (298*(*py-16) + 409*(*pv-128) + 128) >> 8 );
-			*tmp++ = CLIP( (298*(*py-16) - 100*(*pu-128) - 208*(*pv-128) + 128) >> 8 );
-			*tmp++ = CLIP( (298*(*py-16) + 516*(*pu-128) + 128) >> 8 );
-#endif
-			// increase py every time
-			py += 2;
-
-			// increase pu,pv every second time
-			if ((column & 1)==1) {
-				pu += 4;
-				pv += 4;
-			}
-		}
-	}
-}
-
-/**
-	Convert from YUV420 format to RGB888. Formulae are described on http://en.wikipedia.org/wiki/YUV
-
-	\param width width of image
-	\param height height of image
-	\param src source
-	\param dst destination
-*/
-static void YUV420toRGB888(int width, int height, unsigned char *src, unsigned char *dst)
-{
-	int line, column;
-	unsigned char *py, *pu, *pv;
-	unsigned char *tmp = dst;
-
-	/* In this format each four bytes is two pixels. Each four bytes is two Y's, a Cb and a Cr.
-	   Each Y goes to one of the pixels, and the Cb and Cr belong to both pixels. */
-
-	#define CLIP(x) ( (x)>=0xFF ? 0xFF : ( (x) <= 0x00 ? 0x00 : (x) ) )
-
-	unsigned char *base_py = src;
-	unsigned char *base_pu = src+(height*width);
-	unsigned char *base_pv = src+(height*width)+(height*width)/4;
-
-	for (line = 0; line < height; ++line) {
-		for (column = 0; column < width; ++column) {
-			py = base_py+(line*width)+column;
-			pu = base_pu+(line/2*width/2)+column/2;
-			pv = base_pv+(line/2*width/2)+column/2;
-
-#ifdef ITU_R_FLOAT
-			// ITU-R float
-			*tmp++ = CLIP((double)*py + 1.402*((double)*pv-128.0));
-			*tmp++ = CLIP((double)*py - 0.344*((double)*pu-128.0) - 0.714*((double)*pv-128.0));
-			*tmp++ = CLIP((double)*py + 1.772*((double)*pu-128.0));
-#endif
-
-#ifdef ITU_R_INT
-			// ITU-R integer
-			*tmp++ = CLIP( *py + (*pv-128) + ((*pv-128) >> 2) + ((*pv-128) >> 3) + ((*pv-128) >> 5) );
-			*tmp++ = CLIP( *py - (((*pu-128) >> 2) + ((*pu-128) >> 4) + ((*pu-128) >> 5)) - (((*pv-128) >> 1) + ((*pv-128) >> 3) + ((*pv-128) >> 4) + ((*pv-128) >> 5)) );  // 52 58 
-			*tmp++ = CLIP( *py + (*pu-128) + ((*pu-128) >> 1) + ((*pu-128) >> 2) + ((*pu-128) >> 6) );
-#endif
-
-#ifdef NTSC
-			// NTSC integer
-			*tmp++ = CLIP( (298*(*py-16) + 409*(*pv-128) + 128) >> 8 );
-			*tmp++ = CLIP( (298*(*py-16) - 100*(*pu-128) - 208*(*pv-128) + 128) >> 8 );
-			*tmp++ = CLIP( (298*(*py-16) + 516*(*pu-128) + 128) >> 8 );
-#endif
-		}
-	}
-}
 
 /**
 	Print error message and terminate programm with EXIT_FAILURE return code.
