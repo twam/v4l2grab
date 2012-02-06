@@ -80,6 +80,7 @@ static io_method        io              = IO_METHOD_MMAP;
 static int              fd              = -1;
 struct buffer *         buffers         = NULL;
 static unsigned int     n_buffers       = 0;
+unsigned int pixelformat = 0;
 
 // global settings
 static unsigned int width = 640;
@@ -145,6 +146,59 @@ static void YUV422toRGB888(int width, int height, unsigned char *src, unsigned c
 }
 
 /**
+	Convert from YUV420 format to RGB888. Formulae are described on http://en.wikipedia.org/wiki/YUV
+
+	\param width width of image
+	\param height height of image
+	\param src source
+	\param dst destination
+*/
+static void YUV420toRGB888(int width, int height, unsigned char *src, unsigned char *dst)
+{
+	int line, column;
+	unsigned char *py, *pu, *pv;
+	unsigned char *tmp = dst;
+
+	/* In this format each four bytes is two pixels. Each four bytes is two Y's, a Cb and a Cr.
+	   Each Y goes to one of the pixels, and the Cb and Cr belong to both pixels. */
+
+	#define CLIP(x) ( (x)>=0xFF ? 0xFF : ( (x) <= 0x00 ? 0x00 : (x) ) )
+
+	unsigned char *base_py = src;
+	unsigned char *base_pu = src+(height*width);
+	unsigned char *base_pv = src+(height*width)+(height*width)/4;
+
+	for (line = 0; line < height; ++line) {
+		for (column = 0; column < width; ++column) {
+			py = base_py+(line*width)+column;
+			pu = base_pu+(line/2*width/2)+column/2;
+			pv = base_pv+(line/2*width/2)+column/2;
+
+#ifdef ITU_R_FLOAT
+			// ITU-R float
+			*tmp++ = CLIP((double)*py + 1.402*((double)*pv-128.0));
+			*tmp++ = CLIP((double)*py - 0.344*((double)*pu-128.0) - 0.714*((double)*pv-128.0));
+			*tmp++ = CLIP((double)*py + 1.772*((double)*pu-128.0));
+#endif
+
+#ifdef ITU_R_INT
+			// ITU-R integer
+			*tmp++ = CLIP( *py + (*pv-128) + ((*pv-128) >> 2) + ((*pv-128) >> 3) + ((*pv-128) >> 5) );
+			*tmp++ = CLIP( *py - (((*pu-128) >> 2) + ((*pu-128) >> 4) + ((*pu-128) >> 5)) - (((*pv-128) >> 1) + ((*pv-128) >> 3) + ((*pv-128) >> 4) + ((*pv-128) >> 5)) );  // 52 58 
+			*tmp++ = CLIP( *py + (*pu-128) + ((*pu-128) >> 1) + ((*pu-128) >> 2) + ((*pu-128) >> 6) );
+#endif
+
+#ifdef NTSC
+			// NTSC integer
+			*tmp++ = CLIP( (298*(*py-16) + 409*(*pv-128) + 128) >> 8 );
+			*tmp++ = CLIP( (298*(*py-16) - 100*(*pu-128) - 208*(*pv-128) + 128) >> 8 );
+			*tmp++ = CLIP( (298*(*py-16) + 516*(*pu-128) + 128) >> 8 );
+#endif
+		}
+	}
+}
+
+/**
 	Print error message and terminate programm with EXIT_FAILURE return code.
 
 	\param s error message to print
@@ -182,7 +236,7 @@ static void jpegWrite(unsigned char* img)
 {
 	struct jpeg_compress_struct cinfo;
 	struct jpeg_error_mgr jerr;
-	
+
 	JSAMPROW row_pointer[1];
 	FILE *outfile = fopen( jpegFilename, "wb" );
 
@@ -197,7 +251,7 @@ static void jpegWrite(unsigned char* img)
 	jpeg_stdio_dest(&cinfo, outfile);
 
 	// set image parameters
-	cinfo.image_width = width;	
+	cinfo.image_width = width;
 	cinfo.image_height = height;
 	cinfo.input_components = 3;
 	cinfo.in_color_space = JCS_RGB;
@@ -207,7 +261,7 @@ static void jpegWrite(unsigned char* img)
 	// and then adjust quality setting
 	jpeg_set_quality(&cinfo, jpegQuality, TRUE);
 
-	// start compress 
+	// start compress
 	jpeg_start_compress(&cinfo, TRUE);
 
 	// feed data
@@ -234,8 +288,21 @@ static void imageProcess(const void* p)
 	unsigned char* src = (unsigned char*)p;
 	unsigned char* dst = malloc(width*height*3*sizeof(char));
 
-	// convert from YUV422 to RGB888
-	YUV422toRGB888(width,height,src,dst);
+	switch (pixelformat) {
+		case V4L2_PIX_FMT_YUV420:
+			// convert from YUV420 to RGB888
+			YUV420toRGB888(width,height,src,dst);
+			break;
+
+		case V4L2_PIX_FMT_YUYV:
+			// convert from YUV422 to RGB888
+			YUV422toRGB888(width,height,src,dst);
+			break;
+
+		default:
+			fprintf(stderr, "Pixelformat of device not supported!\n");
+			exit(-1);
+	}
 
 	// write jpeg
 	jpegWrite(dst);
@@ -344,7 +411,7 @@ static int frameRead(void)
 	return 1;
 }
 
-/** 
+/**
 	mainloop: read frames and process them
 */
 static void mainLoop(void)
@@ -421,7 +488,7 @@ static void captureStop(void)
 			errno_exit("VIDIOC_STREAMOFF");
 
 			break;
-#endif 
+#endif
 	}
 }
 
@@ -434,7 +501,7 @@ static void captureStart(void)
 	enum v4l2_buf_type type;
 
 	switch (io) {
-#ifdef IO_READ    
+#ifdef IO_READ
 		case IO_METHOD_READ:
 			/* Nothing to do. */
 			break;
@@ -706,17 +773,24 @@ static void deviceInit(void)
 					break;
 			}
 		}
-	} else {        
+	} else {
 		/* Errors ignored. */
 	}
 
 	CLEAR(fmt);
 
+
+	// query device
+	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	if (-1 == xioctl(fd, VIDIOC_G_FMT, &fmt))
+		errno_exit("VIDIOC_G_FMT");
+
+	pixelformat = fmt.fmt.pix.pixelformat;
+
 	// v4l2_format
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	fmt.fmt.pix.width = width; 
+	fmt.fmt.pix.width = width;
 	fmt.fmt.pix.height = height;
-	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
 	fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
 	if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
@@ -878,7 +952,7 @@ int main(int argc, char **argv)
 				io = IO_METHOD_MMAP;
 #else
 				fprintf(stderr, "You didn't compile for mmap support.\n");
-				exit(EXIT_FAILURE);         
+				exit(EXIT_FAILURE);
 #endif
 				break;
 
@@ -887,7 +961,7 @@ int main(int argc, char **argv)
 				io = IO_METHOD_READ;
 #else
 				fprintf(stderr, "You didn't compile for read support.\n");
-				exit(EXIT_FAILURE);         
+				exit(EXIT_FAILURE);
 #endif
 				break;
 
@@ -896,7 +970,7 @@ int main(int argc, char **argv)
 				io = IO_METHOD_USERPTR;
 #else
 				fprintf(stderr, "You didn't compile for userptr support.\n");
-				exit(EXIT_FAILURE);         
+				exit(EXIT_FAILURE);
 #endif
 				break;
 
@@ -920,7 +994,7 @@ int main(int argc, char **argv)
 	if (!jpegFilename) {
 		fprintf(stderr, "You have to specify JPEG output filename!\n\n");
 		usage(stdout, argc, argv);
-		exit(EXIT_FAILURE); 
+		exit(EXIT_FAILURE);
 	}
 
 	// open and initialize device
