@@ -302,7 +302,7 @@ static void mainLoop(void)
 	unsigned int numberOfTimeouts;
 
 	numberOfTimeouts = 0;
-	count = 1;
+	count = 3;
 
 	while (count-- > 0) {
 		for (;;) {
