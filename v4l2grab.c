@@ -136,7 +136,11 @@ static void jpegWrite(unsigned char* img)
 	cinfo.image_width = width;
 	cinfo.image_height = height;
 	cinfo.input_components = 3;
+#if defined(JPG_YUV)
+	cinfo.in_color_space = JCS_YCbCr;
+#else
 	cinfo.in_color_space = JCS_RGB;
+#endif
 
 	// set jpeg compression parameters to default
 	jpeg_set_defaults(&cinfo);
@@ -170,6 +174,9 @@ static void imageProcess(const void* p)
 	unsigned char* src = (unsigned char*)p;
 	unsigned char* dst = malloc(width*height*3*sizeof(char));
 
+#if defined(JPG_YUV)
+    YUV420toRGB888(width,height,src,dst);
+#else
 	switch (pixelformat) {
 		case V4L2_PIX_FMT_YUV420:
 			// convert from YUV420 to RGB888
@@ -185,6 +192,7 @@ static void imageProcess(const void* p)
 			fprintf(stderr, "Pixelformat of device not supported!\n");
 			exit(-1);
 	}
+#endif
 
 	// write jpeg
 	jpegWrite(dst);

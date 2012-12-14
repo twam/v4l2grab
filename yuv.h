@@ -3,5 +3,6 @@
 
 void YUV422toRGB888(int width, int height, unsigned char *src, unsigned char *dst);
 void YUV420toRGB888(int width, int height, unsigned char *src, unsigned char *dst);
+void YUV422toYUV444(int width, int height, unsigned char* src, unsigned char* dst);
 
 #endif
