@@ -135,3 +135,38 @@ void YUV420toRGB888(int width, int height, unsigned char *src, unsigned char *ds
 		}
 	}
 }
+
+/**
+	Convert from YUV420 format to YUV444.
+
+	\param width width of image
+	\param height height of image
+	\param src source
+	\param dst destination
+*/
+void YUV422toYUV444(int width, int height, unsigned char* src, unsigned char* dst) {
+	int line, column;
+	unsigned char *py, *pu, *pv;
+	unsigned char *tmp = dst;
+
+	  py = src;
+	  pu = src + 1;
+	  pv = src + 3;
+
+	for (line = 0; line<height; line++) {
+		for (column = 0; column<width; column++) {
+			*tmp++ = *py;
+			*tmp++ = *pu;
+			*tmp++ = *pv;
+
+		      // increase py every time
+		      py += 2;
+		      // increase pu,pv every second time
+		      if ((column & 1)==1) {
+		        pu += 4;
+		        pv += 4;
+		      }
+		}
+	}
+}
+
