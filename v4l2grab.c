@@ -82,6 +82,7 @@ unsigned int pixelformat = 0;
 static unsigned int width = 640;
 static unsigned int height = 480;
 static unsigned char jpegQuality = 70;
+static J_COLOR_SPACE jpegColorSpace = JCS_RGB;
 static char* jpegFilename = NULL;
 static char* deviceName = "/dev/video0";
 
@@ -141,11 +142,7 @@ static void jpegWrite(unsigned char* img)
 	cinfo.image_width = width;
 	cinfo.image_height = height;
 	cinfo.input_components = 3;
-#if defined(JPG_YUV)
-	cinfo.in_color_space = JCS_YCbCr;
-#else
-	cinfo.in_color_space = JCS_RGB;
-#endif
+	cinfo.in_color_space = jpegColorSpace;
 
 	// set jpeg compression parameters to default
 	jpeg_set_defaults(&cinfo);
@@ -179,25 +176,54 @@ static void imageProcess(const void* p)
 	unsigned char* src = (unsigned char*)p;
 	unsigned char* dst = malloc(width*height*3*sizeof(char));
 
-#if defined(JPG_YUV)
-    YUV420toRGB888(width,height,src,dst);
-#else
-	switch (pixelformat) {
-		case V4L2_PIX_FMT_YUV420:
-			// convert from YUV420 to RGB888
-			YUV420toRGB888(width,height,src,dst);
-			break;
+	switch (jpegColorSpace) {
+        case JCS_GRAYSCALE:
+        	fprintf(stderr, "monochrome color space not supported!\n");
+			exit(EXIT_FAILURE);
+        case JCS_RGB:
+        	switch (pixelformat) {
+				case V4L2_PIX_FMT_YUV420:
+					// convert from YUV420 to RGB888
+					YUV420toRGB888(width, height, src, dst);
+					break;
 
-		case V4L2_PIX_FMT_YUYV:
-			// convert from YUV422 to RGB888
-			YUV422toRGB888(width,height,src,dst);
-			break;
+				case V4L2_PIX_FMT_YUYV:
+					// convert from YUV422 to RGB888
+					YUV422toRGB888(width, height, src, dst);
+					break;
 
-		default:
-			fprintf(stderr, "Pixelformat of device not supported!\n");
-			exit(-1);
+				default:
+					fprintf(stderr, "Pixelformat of device not supported with colorspace RGB!\n");
+					exit(EXIT_FAILURE);
+			}
+			break;
+		case JCS_YCbCr:
+			switch (pixelformat) {
+				case V4L2_PIX_FMT_YUV420:
+					// convert from YUV420 to YUV444
+					YUV420toYUV444(width, height, src, dst);
+					break;
+				case V4L2_PIX_FMT_YUYV:
+					// convert from YUV422 to YUV444
+					YUV422toYUV444(width, height, src, dst);
+					break;
+				default:
+					fprintf(stderr, "Pixelformat of device not supported with colorspace YUV!\n");
+					exit(EXIT_FAILURE);        		
+			}
+        	break;
+        case JCS_CMYK:
+        	fprintf(stderr, "CMYK color space not supported!\n");
+			exit(EXIT_FAILURE);        
+        case JCS_YCCK:        
+        	fprintf(stderr, "YCCK color space not supported!\n");
+			exit(EXIT_FAILURE);
+		case JCS_UNKNOWN:
+        default:
+			fprintf(stderr, "Color space is unknown and therefore not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
 	}
-#endif
 
 	// write jpeg
 	jpegWrite(dst);
@@ -820,8 +846,9 @@ static void usage(FILE* fp, int argc, char** argv)
 		"Options:\n"
 		"-d | --device name   Video device name [/dev/video0]\n"
 		"-h | --help          Print this message\n"
-		"-o | --output        JPEG output filename\n"
-		"-q | --quality       JPEG quality (0-100)\n"
+		"-o | --output        Set JPEG output filename\n"
+		"-q | --quality       Set JPEG quality (0-100)\n"
+		"-y | --jpeg-yuv      Set JPEG colorspace to YUV\n" 
 		"-m | --mmap          Use memory mapped buffers\n"
 		"-r | --read          Use read() calls\n"
 		"-u | --userptr       Use application allocated buffers\n"
@@ -831,7 +858,7 @@ static void usage(FILE* fp, int argc, char** argv)
 		argv[0]);
 	}
 
-static const char short_options [] = "d:ho:q:mruW:H:";
+static const char short_options [] = "d:ho:q:ymruW:H:";
 
 static const struct option
 long_options [] = {
@@ -839,6 +866,7 @@ long_options [] = {
 	{ "help",       no_argument,            NULL,           'h' },
 	{ "output",     required_argument,      NULL,           'o' },
 	{ "quality",    required_argument,      NULL,           'q' },
+	{ "jpeg-yuv",	no_argument,            NULL,           'y' },
 	{ "mmap",       no_argument,            NULL,           'm' },
 	{ "read",       no_argument,            NULL,           'r' },
 	{ "userptr",    no_argument,            NULL,           'u' },
@@ -879,6 +907,11 @@ int main(int argc, char **argv)
 			case 'q':
 				// set jpeg quality
 				jpegQuality = atoi(optarg);
+				break;
+
+			case 'y':
+				// set jpeg colorspace to YUV
+				jpegColorSpace = JCS_YCbCr;
 				break;
 
 			case 'm':
