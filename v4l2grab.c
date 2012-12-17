@@ -648,7 +648,6 @@ static void deviceInit(void)
 #endif
 	}
 
-
 	/* Select video input, video standard and tune here. */
 	CLEAR(cropcap);
 
@@ -674,13 +673,53 @@ static void deviceInit(void)
 
 	CLEAR(fmt);
 
-
 	// query device
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	if (-1 == xioctl(fd, VIDIOC_G_FMT, &fmt))
 		errno_exit("VIDIOC_G_FMT");
 
 	pixelformat = fmt.fmt.pix.pixelformat;
+
+	switch (pixelformat) {
+ 		case V4L2_PIX_FMT_SBGGR8:
+			fprintf(stderr, "Pixel format 4L2_PIX_FMT_SBGGR8 not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_SN9C10X:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_SN9C10X not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_MJPEG:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_MJPEG not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_JPEG:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_JPEG not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_RGB24:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_RGB24 not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_UYVY:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_UYVY not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_YUV422P:
+			fprintf(stderr, "Pixel format V4L2_PIX_FMT_YUV422P not supported!\n");
+			exit(EXIT_FAILURE);
+			break;
+ 		case V4L2_PIX_FMT_YUV420:
+			printf("Using pixel format V4L2_PIX_FMT_YUV420.\n");
+			break;
+ 		case V4L2_PIX_FMT_YUYV:
+			printf("Using pixel format V4L2_PIX_FMT_YUYV.\n");
+			break;
+ 		default:
+			fprintf(stderr, "Unknown pixel format %u!\n", pixelformat);
+			exit(EXIT_FAILURE);
+ 			break;
+ 	};
 
 	// v4l2_format
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -694,12 +733,12 @@ static void deviceInit(void)
 	/* Note VIDIOC_S_FMT may change width and height. */
 	if (width != fmt.fmt.pix.width) {
 		width = fmt.fmt.pix.width;
-		fprintf(stderr,"Image width set to %i by device %s.\n",width,deviceName);
+		fprintf(stderr,"Image width set to %i by device %s.\n", width, deviceName);
 	}
 
 	if (height != fmt.fmt.pix.height) {
 		height = fmt.fmt.pix.height;
-		fprintf(stderr,"Image height set to %i by device %s.\n",height,deviceName);
+		fprintf(stderr,"Image height set to %i by device %s.\n", height, deviceName);
 	}
 
 	/* Buggy driver paranoia. */
