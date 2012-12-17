@@ -50,6 +50,11 @@
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 
+#if defined(IO_MMAP) || defined(IO_USERPTR)
+// minimum number of buffers to request in VIDIOC_REQBUFS call
+#define VIDIOC_REQBUFS_COUNT 2
+#endif
+
 typedef enum {
 #ifdef IO_READ
         IO_METHOD_READ,
@@ -504,7 +509,7 @@ static void mmapInit(void)
 
 	CLEAR(req);
 
-	req.count = 4;
+	req.count = VIDIOC_REQBUFS_COUNT;
 	req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	req.memory = V4L2_MEMORY_MMAP;
 
@@ -561,7 +566,7 @@ static void userptrInit(unsigned int buffer_size)
 
 	CLEAR(req);
 
-	req.count = 4;
+	req.count = VIDIOC_REQBUFS_COUNT;
 	req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	req.memory = V4L2_MEMORY_USERPTR;
 
