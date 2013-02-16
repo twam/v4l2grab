@@ -46,9 +46,14 @@
 #include <asm/types.h>
 #include <linux/videodev2.h>
 #include <jpeglib.h>
+#include <libv4l2.h>
 #include "yuv.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
+
+#ifndef __GITVERSION
+#define __GITVERSION "unknown"
+#endif
 
 #if defined(IO_MMAP) || defined(IO_USERPTR)
 // minimum number of buffers to request in VIDIOC_REQBUFS call
@@ -76,13 +81,11 @@ static io_method        io              = IO_METHOD_MMAP;
 static int              fd              = -1;
 struct buffer *         buffers         = NULL;
 static unsigned int     n_buffers       = 0;
-unsigned int pixelformat = 0;
 
 // global settings
 static unsigned int width = 640;
 static unsigned int height = 480;
 static unsigned char jpegQuality = 70;
-static J_COLOR_SPACE jpegColorSpace = JCS_RGB;
 static char* jpegFilename = NULL;
 static char* deviceName = "/dev/video0";
 
@@ -93,7 +96,7 @@ static char* deviceName = "/dev/video0";
 */
 static void errno_exit(const char* s)
 {
-	fprintf(stderr, "%s error %d, %s\n", s, errno, strerror (errno));
+	fprintf(stderr, "%s error %d, %s\n", s, errno, strerror(errno));
 	exit(EXIT_FAILURE);
 }
 
@@ -109,7 +112,7 @@ static int xioctl(int fd, int request, void* argp)
 {
 	int r;
 
-	do r = ioctl(fd, request, argp);
+	do r = v4l2_ioctl(fd, request, argp);
 	while (-1 == r && EINTR == errno);
 
 	return r;
@@ -142,7 +145,7 @@ static void jpegWrite(unsigned char* img)
 	cinfo.image_width = width;
 	cinfo.image_height = height;
 	cinfo.input_components = 3;
-	cinfo.in_color_space = jpegColorSpace;
+	cinfo.in_color_space = JCS_YCbCr;
 
 	// set jpeg compression parameters to default
 	jpeg_set_defaults(&cinfo);
@@ -176,54 +179,7 @@ static void imageProcess(const void* p)
 	unsigned char* src = (unsigned char*)p;
 	unsigned char* dst = malloc(width*height*3*sizeof(char));
 
-	switch (jpegColorSpace) {
-        case JCS_GRAYSCALE:
-        	fprintf(stderr, "monochrome color space not supported!\n");
-			exit(EXIT_FAILURE);
-        case JCS_RGB:
-        	switch (pixelformat) {
-				case V4L2_PIX_FMT_YUV420:
-					// convert from YUV420 to RGB888
-					YUV420toRGB888(width, height, src, dst);
-					break;
-
-				case V4L2_PIX_FMT_YUYV:
-					// convert from YUV422 to RGB888
-					YUV422toRGB888(width, height, src, dst);
-					break;
-
-				default:
-					fprintf(stderr, "Pixelformat of device not supported with colorspace RGB!\n");
-					exit(EXIT_FAILURE);
-			}
-			break;
-		case JCS_YCbCr:
-			switch (pixelformat) {
-				case V4L2_PIX_FMT_YUV420:
-					// convert from YUV420 to YUV444
-					YUV420toYUV444(width, height, src, dst);
-					break;
-				case V4L2_PIX_FMT_YUYV:
-					// convert from YUV422 to YUV444
-					YUV422toYUV444(width, height, src, dst);
-					break;
-				default:
-					fprintf(stderr, "Pixelformat of device not supported with colorspace YUV!\n");
-					exit(EXIT_FAILURE);        		
-			}
-        	break;
-        case JCS_CMYK:
-        	fprintf(stderr, "CMYK color space not supported!\n");
-			exit(EXIT_FAILURE);        
-        case JCS_YCCK:        
-        	fprintf(stderr, "YCCK color space not supported!\n");
-			exit(EXIT_FAILURE);
-		case JCS_UNKNOWN:
-        default:
-			fprintf(stderr, "Color space is unknown and therefore not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
-	}
+	YUV420toYUV444(width, height, src, dst);
 
 	// write jpeg
 	jpegWrite(dst);
@@ -245,7 +201,7 @@ static int frameRead(void)
 	switch (io) {
 #ifdef IO_READ
 		case IO_METHOD_READ:
-			if (-1 == read (fd, buffers[0].start, buffers[0].length)) {
+			if (-1 == v4l2_read(fd, buffers[0].start, buffers[0].length)) {
 				switch (errno) {
 					case EAGAIN:
 						return 0;
@@ -316,7 +272,7 @@ static int frameRead(void)
 				}
 
 				for (i = 0; i < n_buffers; ++i)
-					if (buf.m.userptr == (unsigned long) buffers[i].start && buf.length == buffers[i].length)
+					if (buf.m.userptr == (unsigned long)buffers[i].start && buf.length == buffers[i].length)
 						break;
 
 				assert (i < n_buffers);
@@ -492,7 +448,7 @@ static void deviceUninit(void)
 #ifdef IO_MMAP
 		case IO_METHOD_MMAP:
 			for (i = 0; i < n_buffers; ++i)
-				if (-1 == munmap (buffers[i].start, buffers[i].length))
+				if (-1 == v4l2_munmap(buffers[i].start, buffers[i].length))
 					errno_exit("munmap");
 			break;
 #endif
@@ -500,7 +456,7 @@ static void deviceUninit(void)
 #ifdef IO_USERPTR
 		case IO_METHOD_USERPTR:
 			for (i = 0; i < n_buffers; ++i)
-				free (buffers[i].start);
+				free(buffers[i].start);
 			break;
 #endif
 	}
@@ -573,7 +529,7 @@ static void mmapInit(void)
 			errno_exit("VIDIOC_QUERYBUF");
 
 		buffers[n_buffers].length = buf.length;
-		buffers[n_buffers].start = mmap (NULL /* start anywhere */, buf.length, PROT_READ | PROT_WRITE /* required */, MAP_SHARED /* recommended */, fd, buf.m.offset);
+		buffers[n_buffers].start = v4l2_mmap(NULL /* start anywhere */, buf.length, PROT_READ | PROT_WRITE /* required */, MAP_SHARED /* recommended */, fd, buf.m.offset);
 
 		if (MAP_FAILED == buffers[n_buffers].start)
 			errno_exit("mmap");
@@ -605,7 +561,7 @@ static void userptrInit(unsigned int buffer_size)
 		}
 	}
 
-	buffers = calloc(4, sizeof (*buffers));
+	buffers = calloc(4, sizeof(*buffers));
 
 	if (!buffers) {
 		fprintf(stderr, "Out of memory\n");
@@ -614,7 +570,7 @@ static void userptrInit(unsigned int buffer_size)
 
 	for (n_buffers = 0; n_buffers < 4; ++n_buffers) {
 		buffers[n_buffers].length = buffer_size;
-		buffers[n_buffers].start = memalign (/* boundary */ page_size, buffer_size);
+		buffers[n_buffers].start = memalign(/* boundary */ page_size, buffer_size);
 
 		if (!buffers[n_buffers].start) {
 			fprintf(stderr, "Out of memory\n");
@@ -699,62 +655,20 @@ static void deviceInit(void)
 
 	CLEAR(fmt);
 
-	// query device
-	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	if (-1 == xioctl(fd, VIDIOC_G_FMT, &fmt))
-		errno_exit("VIDIOC_G_FMT");
-
-	pixelformat = fmt.fmt.pix.pixelformat;
-
-	switch (pixelformat) {
- 		case V4L2_PIX_FMT_SBGGR8:
-			fprintf(stderr, "Pixel format 4L2_PIX_FMT_SBGGR8 not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_SN9C10X:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_SN9C10X not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_MJPEG:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_MJPEG not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_JPEG:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_JPEG not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_RGB24:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_RGB24 not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_UYVY:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_UYVY not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_YUV422P:
-			fprintf(stderr, "Pixel format V4L2_PIX_FMT_YUV422P not supported!\n");
-			exit(EXIT_FAILURE);
-			break;
- 		case V4L2_PIX_FMT_YUV420:
-			printf("Using pixel format V4L2_PIX_FMT_YUV420.\n");
-			break;
- 		case V4L2_PIX_FMT_YUYV:
-			printf("Using pixel format V4L2_PIX_FMT_YUYV.\n");
-			break;
- 		default:
-			fprintf(stderr, "Unknown pixel format %u!\n", pixelformat);
-			exit(EXIT_FAILURE);
- 			break;
- 	};
-
 	// v4l2_format
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	fmt.fmt.pix.width = width;
 	fmt.fmt.pix.height = height;
 	fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
 
 	if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
 		errno_exit("VIDIOC_S_FMT");
+
+	if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
+		fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	/* Note VIDIOC_S_FMT may change width and height. */
 	if (width != fmt.fmt.pix.width) {
@@ -801,7 +715,7 @@ static void deviceInit(void)
 */
 static void deviceClose(void)
 {
-	if (-1 == close (fd))
+	if (-1 == v4l2_close(fd))
 		errno_exit("close");
 
 	fd = -1;
@@ -816,22 +730,22 @@ static void deviceOpen(void)
 
 	// stat file
 	if (-1 == stat(deviceName, &st)) {
-		fprintf(stderr, "Cannot identify '%s': %d, %s\n", deviceName, errno, strerror (errno));
+		fprintf(stderr, "Cannot identify '%s': %d, %s\n", deviceName, errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
 	// check if its device
-	if (!S_ISCHR (st.st_mode)) {
+	if (!S_ISCHR(st.st_mode)) {
 		fprintf(stderr, "%s is no device\n", deviceName);
 		exit(EXIT_FAILURE);
 	}
 
 	// open device
-	fd = open(deviceName, O_RDWR /* required */ | O_NONBLOCK, 0);
+	fd = v4l2_open(deviceName, O_RDWR /* required */ | O_NONBLOCK, 0);
 
 	// check if opening was successfull
 	if (-1 == fd) {
-		fprintf(stderr, "Cannot open '%s': %d, %s\n", deviceName, errno, strerror (errno));
+		fprintf(stderr, "Cannot open '%s': %d, %s\n", deviceName, errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 }
@@ -841,24 +755,24 @@ static void deviceOpen(void)
 */
 static void usage(FILE* fp, int argc, char** argv)
 {
-	fprintf (fp,
+	fprintf(fp,
 		"Usage: %s [options]\n\n"
 		"Options:\n"
 		"-d | --device name   Video device name [/dev/video0]\n"
 		"-h | --help          Print this message\n"
 		"-o | --output        Set JPEG output filename\n"
 		"-q | --quality       Set JPEG quality (0-100)\n"
-		"-y | --jpeg-yuv      Set JPEG colorspace to YUV\n" 
 		"-m | --mmap          Use memory mapped buffers\n"
 		"-r | --read          Use read() calls\n"
 		"-u | --userptr       Use application allocated buffers\n"
-		"-W | --width         width\n"
-		"-H | --height        height\n"
+		"-W | --width         Set image width\n"
+		"-H | --height        Set image height\n"
+		"-v | --version       Print version"
 		"",
 		argv[0]);
 	}
 
-static const char short_options [] = "d:ho:q:ymruW:H:";
+static const char short_options [] = "d:ho:q:mruW:H:v";
 
 static const struct option
 long_options [] = {
@@ -866,12 +780,12 @@ long_options [] = {
 	{ "help",       no_argument,            NULL,           'h' },
 	{ "output",     required_argument,      NULL,           'o' },
 	{ "quality",    required_argument,      NULL,           'q' },
-	{ "jpeg-yuv",	no_argument,            NULL,           'y' },
 	{ "mmap",       no_argument,            NULL,           'm' },
 	{ "read",       no_argument,            NULL,           'r' },
 	{ "userptr",    no_argument,            NULL,           'u' },
 	{ "width",      required_argument,      NULL,           'W' },
 	{ "height",     required_argument,      NULL,           'H' },
+	{ "version",	no_argument,			NULL,			'v' },
 	{ 0, 0, 0, 0 }
 };
 
@@ -909,11 +823,6 @@ int main(int argc, char **argv)
 				jpegQuality = atoi(optarg);
 				break;
 
-			case 'y':
-				// set jpeg colorspace to YUV
-				jpegColorSpace = JCS_YCbCr;
-				break;
-
 			case 'm':
 #ifdef IO_MMAP
 				io = IO_METHOD_MMAP;
@@ -949,6 +858,11 @@ int main(int argc, char **argv)
 			case 'H':
 				// set height
 				height = atoi(optarg);
+				break;
+
+			case 'v':
+				printf("Version: %s\n", __GITVERSION);
+				exit(EXIT_SUCCESS);
 				break;
 
 			default:

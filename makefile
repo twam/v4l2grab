@@ -1,14 +1,14 @@
 # options to compile
-OPTIONS = -D_TIME -D_TRAP_FPE -D_GNU_SOURCE
+OPTIONS = 
 
 # compiler
 CC = gcc
 
 # C flags
-CFLAGS = -Wall -march=native -Werror
+CFLAGS = -Wall -Werror
 
 # libs
-LIBS = -ljpeg
+LIBS = -ljpeg -lv4lconvert -lv4l2
 
 # executable name
 EXENAME = v4l2grab
@@ -18,9 +18,12 @@ SRCS = $(wildcard *.c)
 OBJS = $(SRCS:%.c=%.o)
 # header files
 HDRS = $(wildcard *.h)
+# git version 
+GITVERSION = "$(shell git describe --always --tags --dirty)"
+
 
 $(EXENAME): $(OBJS)
-	$(CC) $(OBJS) $(CFLAGS) -o $(EXENAME) $(LIBS)
+	$(CC) $(OBJS) $(CFLAGS) $(OPTIONS) -o $(EXENAME) $(LIBS)
 
 $(OBJS): $(HDRS) makefile
 
@@ -30,5 +33,5 @@ clean:
 	rm -f *.o *~ *.s *.il
 
 %.o : %.c
-	$(CC) $*.c -c $(CFLAGS)
+	$(CC) $*.c -c $(CFLAGS) $(OPTIONS) -D__GITVERSION='$(GITVERSION)'
 
