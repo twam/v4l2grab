@@ -3,9 +3,12 @@ v4l2grab
 
 This is a small command line utility for grabbing JPEGs form V4L2 devices (e.g. USB webcams).
 
-To compile, just type a "make" and you should receive a v4l2prog binary.
+For installation, follow the instructions into the [GitHub Wiki](https://github.com/twam/v4l2grab/wiki/Installation).
 
-Try ./v4l2prog -h to get some help.
+Try `./v4l2prog -h` to get some help.
 
-[![Flattr this](http://api.flattr.com/button/button-static-50x60.png)
+If your webcam works, please add it to the [Compatible Devices](https://github.com/twam/v4l2grab/wiki/Compatible%20Devices) table.
+
+If you want to support this project, feel free to flattr: 
+[![Flattr this](http://api.flattr.com/button/flattr-badge-large.png)
 ](https://flattr.com/thing/157196/v4l2grab-Grabbing-JPEGs-from-V4L2-devices)
