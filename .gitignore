@@ -1,0 +1,16 @@
+Makefile
+config.h
+config.log
+config.status
+depcomp
+install-sh
+missing
+configure
+aclocal.m4
+Makefile.in
+.deps
+*~
+*.o
+*.cache
+v4l2grab
+stamp-h1

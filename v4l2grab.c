@@ -47,12 +47,14 @@
 #include <linux/videodev2.h>
 #include <jpeglib.h>
 #include <libv4l2.h>
+
+#include "config.h"
 #include "yuv.h"
 
 #define CLEAR(x) memset (&(x), 0, sizeof (x))
 
-#ifndef __GITVERSION
-#define __GITVERSION "unknown"
+#ifndef VERSION
+#define VERSION "unknown"
 #endif
 
 #if defined(IO_MMAP) || defined(IO_USERPTR)
@@ -767,7 +769,7 @@ static void usage(FILE* fp, int argc, char** argv)
 		"-u | --userptr       Use application allocated buffers\n"
 		"-W | --width         Set image width\n"
 		"-H | --height        Set image height\n"
-		"-v | --version       Print version"
+		"-v | --version       Print version\n"
 		"",
 		argv[0]);
 	}
@@ -861,7 +863,7 @@ int main(int argc, char **argv)
 				break;
 
 			case 'v':
-				printf("Version: %s\n", __GITVERSION);
+				printf("Version: %s\n", VERSION);
 				exit(EXIT_SUCCESS);
 				break;
 
