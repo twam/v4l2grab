@@ -21,6 +21,13 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
+ 
+ /**************************************************************************
+ *   Modification History                                                  *
+ *                                                                         *
+ *   Matthew Witherwax      21AUG2013                                      *
+ *      Added ability to change frame interval (ie. frame rate/fps)        *
+ ***************************************************************************/
 
 // compile with all three access methods
 #if !defined(IO_READ) && !defined(IO_MMAP) && !defined(IO_USERPTR)
@@ -87,6 +94,7 @@ static unsigned int     n_buffers       = 0;
 // global settings
 static unsigned int width = 640;
 static unsigned int height = 480;
+static unsigned int fps = 30;
 static unsigned char jpegQuality = 70;
 static char* jpegFilename = NULL;
 static char* deviceName = "/dev/video0";
@@ -294,7 +302,7 @@ static int frameRead(void)
 	mainloop: read frames and process them
 */
 static void mainLoop(void)
-{
+{	
 	unsigned int count;
 	unsigned int numberOfTimeouts;
 
@@ -591,6 +599,7 @@ static void deviceInit(void)
 	struct v4l2_cropcap cropcap;
 	struct v4l2_crop crop;
 	struct v4l2_format fmt;
+	struct v4l2_streamparm frameint;
 	unsigned int min;
 
 	if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &cap)) {
@@ -682,6 +691,15 @@ static void deviceInit(void)
 		height = fmt.fmt.pix.height;
 		fprintf(stderr,"Image height set to %i by device %s.\n", height, deviceName);
 	}
+	
+	CLEAR(frameint);
+	
+	/* Attempt to set the frame interval. */
+	frameint.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	frameint.parm.capture.timeperframe.numerator = 1;
+	frameint.parm.capture.timeperframe.denominator = fps;
+	if (-1 == xioctl(fd, VIDIOC_S_PARM, &frameint))
+		fprintf(stderr,"Unable to set frame interval.\n");
 
 	/* Buggy driver paranoia. */
 	min = fmt.fmt.pix.width * 2;
@@ -769,12 +787,13 @@ static void usage(FILE* fp, int argc, char** argv)
 		"-u | --userptr       Use application allocated buffers\n"
 		"-W | --width         Set image width\n"
 		"-H | --height        Set image height\n"
+		"-I | --interval      Set frame interval (fps)\n"
 		"-v | --version       Print version\n"
 		"",
 		argv[0]);
 	}
 
-static const char short_options [] = "d:ho:q:mruW:H:v";
+static const char short_options [] = "d:ho:q:mruW:H:I:v";
 
 static const struct option
 long_options [] = {
@@ -787,7 +806,8 @@ long_options [] = {
 	{ "userptr",    no_argument,            NULL,           'u' },
 	{ "width",      required_argument,      NULL,           'W' },
 	{ "height",     required_argument,      NULL,           'H' },
-	{ "version",	no_argument,			NULL,			'v' },
+	{ "interval",   required_argument,      NULL,           'I' },
+	{ "version",	no_argument,		NULL,		'v' },
 	{ 0, 0, 0, 0 }
 };
 
@@ -860,6 +880,11 @@ int main(int argc, char **argv)
 			case 'H':
 				// set height
 				height = atoi(optarg);
+				break;
+				
+			case 'I':
+				// set fps
+				fps = atoi(optarg);
 				break;
 
 			case 'v':
