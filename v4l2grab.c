@@ -692,14 +692,18 @@ static void deviceInit(void)
 		fprintf(stderr,"Image height set to %i by device %s.\n", height, deviceName);
 	}
 	
-	CLEAR(frameint);
-	
-	/* Attempt to set the frame interval. */
-	frameint.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	frameint.parm.capture.timeperframe.numerator = 1;
-	frameint.parm.capture.timeperframe.denominator = fps;
-	if (-1 == xioctl(fd, VIDIOC_S_PARM, &frameint))
-		fprintf(stderr,"Unable to set frame interval.\n");
+  /* If the user has set the fps to -1, don't try to set the frame interval */
+  if (fps != -1)
+  {
+    CLEAR(frameint);
+    
+    /* Attempt to set the frame interval. */
+    frameint.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    frameint.parm.capture.timeperframe.numerator = 1;
+    frameint.parm.capture.timeperframe.denominator = fps;
+    if (-1 == xioctl(fd, VIDIOC_S_PARM, &frameint))
+      fprintf(stderr,"Unable to set frame interval.\n");
+  }
 
 	/* Buggy driver paranoia. */
 	min = fmt.fmt.pix.width * 2;
@@ -787,7 +791,7 @@ static void usage(FILE* fp, int argc, char** argv)
 		"-u | --userptr       Use application allocated buffers\n"
 		"-W | --width         Set image width\n"
 		"-H | --height        Set image height\n"
-		"-I | --interval      Set frame interval (fps)\n"
+		"-I | --interval      Set frame interval (fps) (-1 to skip)\n"
 		"-v | --version       Print version\n"
 		"",
 		argv[0]);
