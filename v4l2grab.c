@@ -27,6 +27,8 @@
  *                                                                         *
  *   Matthew Witherwax      21AUG2013                                      *
  *      Added ability to change frame interval (ie. frame rate/fps)        *
+ * Martin Savc              7JUL2015
+ *      Added support for continuous capture using SIGINT to stop.
  ***************************************************************************/
 
 // compile with all three access methods
@@ -48,12 +50,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <time.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <asm/types.h>
 #include <linux/videodev2.h>
 #include <jpeglib.h>
 #include <libv4l2.h>
+#include <signal.h>
 
 #include "config.h"
 #include "yuv.h"
@@ -95,9 +99,31 @@ static unsigned int     n_buffers       = 0;
 static unsigned int width = 640;
 static unsigned int height = 480;
 static unsigned int fps = 30;
+static int continuous = 0;
 static unsigned char jpegQuality = 70;
 static char* jpegFilename = NULL;
+static char* jpegFilenamePart = NULL;
 static char* deviceName = "/dev/video0";
+
+/**
+SIGINT interput handler
+*/
+void StopContCapture(int sig_id) {
+	printf("stoping continuous capture\n");
+	continuous = 0;
+}
+
+void InstallSIGINTHandler() {
+	struct sigaction sa;
+	CLEAR(sa);
+	
+	sa.sa_handler = StopContCapture;
+	if(sigaction(SIGINT, &sa, 0) != 0)
+	{
+		fprintf(stderr,"could not install SIGINT handler, continuous capture disabled");
+		continuous = 0;
+	}
+}
 
 /**
 	Print error message and terminate programm with EXIT_FAILURE return code.
@@ -133,7 +159,7 @@ static int xioctl(int fd, int request, void* argp)
 
 	\param img image to write
 */
-static void jpegWrite(unsigned char* img)
+static void jpegWrite(unsigned char* img, char* jpegFilename)
 {
 	struct jpeg_compress_struct cinfo;
 	struct jpeg_error_mgr jerr;
@@ -184,15 +210,24 @@ static void jpegWrite(unsigned char* img)
 /**
 	process image read
 */
-static void imageProcess(const void* p)
+static void imageProcess(const void* p, struct timeval timestamp)
 {
+	//timestamp.tv_sec
+	//timestamp.tv_usec
 	unsigned char* src = (unsigned char*)p;
 	unsigned char* dst = malloc(width*height*3*sizeof(char));
 
 	YUV420toYUV444(width, height, src, dst);
 
+	if(continuous==1) {
+		static int img_ind = 0;		
+		long timestamp_long;
+		timestamp_long = timestamp.tv_sec*1e6 + timestamp.tv_usec;
+		sprintf(jpegFilename,"%s_%010d_%010ld.jpg",jpegFilenamePart,img_ind++,timestamp_long);
+
+	}
 	// write jpeg
-	jpegWrite(dst);
+	jpegWrite(dst,jpegFilename);
 
 	// free temporary image
 	free(dst);
@@ -225,7 +260,13 @@ static int frameRead(void)
 				}
 			}
 
-			imageProcess(buffers[0].start);
+			struct timespec ts;
+			struct timeval timestamp;
+			clock_gettime(CLOCK_MONOTONIC,&ts);
+			timestamp.tv_sec = ts.tv_sec;
+			timestamp.tv_usec = ts.tv_nsec/1000;
+
+			imageProcess(buffers[0].start,timestamp);
 			break;
 #endif
 
@@ -252,7 +293,7 @@ static int frameRead(void)
 
 			assert(buf.index < n_buffers);
 
-			imageProcess(buffers[buf.index].start);
+			imageProcess(buffers[buf.index].start,buf.timestamp);
 
 			if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
 				errno_exit("VIDIOC_QBUF");
@@ -287,7 +328,7 @@ static int frameRead(void)
 
 				assert (i < n_buffers);
 
-				imageProcess((void *)buf.m.userptr);
+				imageProcess((void *)buf.m.userptr,buf.timestamp);
 
 				if (-1 == xioctl(fd, VIDIOC_QBUF, &buf))
 					errno_exit("VIDIOC_QBUF");
@@ -303,7 +344,7 @@ static int frameRead(void)
 */
 static void mainLoop(void)
 {	
-	unsigned int count;
+	int count;
 	unsigned int numberOfTimeouts;
 
 	numberOfTimeouts = 0;
@@ -338,6 +379,9 @@ static void mainLoop(void)
 					fprintf(stderr, "select timeout\n");
 					exit(EXIT_FAILURE);
 				}
+			}
+			if(continuous == 1) {
+				count = 3;
 			}
 
 			if (frameRead())
@@ -792,12 +836,13 @@ static void usage(FILE* fp, int argc, char** argv)
 		"-W | --width         Set image width\n"
 		"-H | --height        Set image height\n"
 		"-I | --interval      Set frame interval (fps) (-1 to skip)\n"
+		"-c | --continuous    Do continous capture, stop with SIGINT.\n"
 		"-v | --version       Print version\n"
 		"",
 		argv[0]);
 	}
 
-static const char short_options [] = "d:ho:q:mruW:H:I:v";
+static const char short_options [] = "d:ho:q:mruW:H:I:vc";
 
 static const struct option
 long_options [] = {
@@ -812,6 +857,7 @@ long_options [] = {
 	{ "height",     required_argument,      NULL,           'H' },
 	{ "interval",   required_argument,      NULL,           'I' },
 	{ "version",	no_argument,		NULL,		'v' },
+	{ "continuous",	no_argument,		NULL,		'c' },
 	{ 0, 0, 0, 0 }
 };
 
@@ -891,6 +937,13 @@ int main(int argc, char **argv)
 				fps = atoi(optarg);
 				break;
 
+			case 'c':
+				// set flag for continuous capture, interuptible by sigint
+				continuous = 1;
+				InstallSIGINTHandler();
+				break;
+				
+
 			case 'v':
 				printf("Version: %s\n", VERSION);
 				exit(EXIT_SUCCESS);
@@ -908,6 +961,14 @@ int main(int argc, char **argv)
 		usage(stdout, argc, argv);
 		exit(EXIT_FAILURE);
 	}
+	
+	if(continuous == 1) {
+		int max_name_len = strlen(jpegFilename)+10+10+3;
+		jpegFilenamePart = jpegFilename;
+		jpegFilename = calloc(max_name_len,sizeof(char));
+		strcpy(jpegFilename,jpegFilenamePart);
+	}
+	
 
 	// open and initialize device
 	deviceOpen();
@@ -925,6 +986,10 @@ int main(int argc, char **argv)
 	// close device
 	deviceUninit();
 	deviceClose();
+
+	if(jpegFilenamePart != 0){ 
+		free(jpegFilename);
+	}
 
 	exit(EXIT_SUCCESS);
 
