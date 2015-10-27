@@ -14,3 +14,4 @@ Makefile.in
 *.cache
 v4l2grab
 stamp-h1
+compile
