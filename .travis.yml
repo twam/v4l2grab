@@ -1,0 +1,16 @@
+language: c
+
+addons:
+  apt:
+    packages:
+      - libjpeg8-dev
+      - libv4l-dev 
+
+os:
+  - linux
+
+compiler:
+  - gcc
+
+script:
+  - ./autogen.sh && ./configure && make
