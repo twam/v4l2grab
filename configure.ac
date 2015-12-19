@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_INIT([v4l2grab], [m4_esyscmd_s([git describe --always --tag --dirty])], [Tobias_Mueller@twam.info])
+AC_INIT([v4l2grab], [m4_esyscmd_s([git describe --always --tag --dirty 2>/dev/null])], [Tobias_Mueller@twam.info])
 
 # prepare for automake
 AM_INIT_AUTOMAKE
