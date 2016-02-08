@@ -58,6 +58,8 @@
 #include <jpeglib.h>
 #include <libv4l2.h>
 #include <signal.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "config.h"
 #include "yuv.h"
@@ -104,6 +106,8 @@ static unsigned char jpegQuality = 70;
 static char* jpegFilename = NULL;
 static char* jpegFilenamePart = NULL;
 static char* deviceName = "/dev/video0";
+
+static const char* const continuousFilenameFmt = "%s_%010"PRIu32"_%"PRId64".jpg";
 
 /**
 SIGINT interput handler
@@ -220,10 +224,10 @@ static void imageProcess(const void* p, struct timeval timestamp)
 	YUV420toYUV444(width, height, src, dst);
 
 	if(continuous==1) {
-		static int img_ind = 0;		
-		long timestamp_long;
+		static uint32_t img_ind = 0;
+		int64_t timestamp_long;
 		timestamp_long = timestamp.tv_sec*1e6 + timestamp.tv_usec;
-		sprintf(jpegFilename,"%s_%010d_%010ld.jpg",jpegFilenamePart,img_ind++,timestamp_long);
+		sprintf(jpegFilename,continuousFilenameFmt,jpegFilenamePart,img_ind++,timestamp_long);
 
 	}
 	// write jpeg
@@ -963,9 +967,9 @@ int main(int argc, char **argv)
 	}
 	
 	if(continuous == 1) {
-		int max_name_len = strlen(jpegFilename)+10+10+3;
+		int max_name_len = snprintf(NULL,0,continuousFilenameFmt,jpegFilename,UINT32_MAX,INT64_MAX);
 		jpegFilenamePart = jpegFilename;
-		jpegFilename = calloc(max_name_len,sizeof(char));
+		jpegFilename = calloc(max_name_len+1,sizeof(char));
 		strcpy(jpegFilename,jpegFilenamePart);
 	}
 	
