@@ -27,8 +27,11 @@
  *                                                                         *
  *   Matthew Witherwax      21AUG2013                                      *
  *      Added ability to change frame interval (ie. frame rate/fps)        *
- * Martin Savc              7JUL2015
- *      Added support for continuous capture using SIGINT to stop.
+ *   Martin Savc            07JUL2015                                      *
+ *      Added support for continuous capture using SIGINT to stop.         *
+ *   Dale Taylor            11SEPT2021                                     *
+ *      Added support for specifying a delay between captures in           *
+ *      continuous mode                                                    *
  ***************************************************************************/
 
 // compile with all three access methods
@@ -404,9 +407,9 @@ static void mainLoop(void)
 			}
 
 			if (frameRead()){
-				if(period > 0) {
+				if(period > 0)
 					delay(period);
-				}
+				
 				break;
 			} 
 				
