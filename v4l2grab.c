@@ -398,17 +398,19 @@ static void mainLoop(void)
 					exit(EXIT_FAILURE);
 				}
 			}
+
 			if(continuous == 1) {
 				count = 3;
 			}
 
-			if (frameRead())
+			if (frameRead()){
+				if(period > 0) {
+					delay(period);
+				}
 				break;
+			} 
+				
 			
-			if(period > 0) {
-				delay(period);
-			}
-
 			/* EAGAIN - continue select loop. */
 		}
 	}
