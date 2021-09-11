@@ -345,6 +345,19 @@ static int frameRead(void)
 }
 
 /**
+	delay (ms)
+*/
+static void delay(int milliseconds) {
+	long pause;
+	clock_t now,then;
+
+	pause = milliseconds*(CLOCKS_PER_SEC/1000);
+	now = then = clock();
+	while( (now-then) < pause )
+		now = clock();
+}
+
+/**
 	mainloop: read frames and process them
 */
 static void mainLoop(void)
@@ -825,19 +838,6 @@ static void deviceOpen(void)
 		fprintf(stderr, "Cannot open '%s': %d, %s\n", deviceName, errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-}
-
-/**
-	delay (ms)
-*/
-static void delay(int milliseconds) {
-	long pause;
-	clock_t now,then;
-
-	pause = milliseconds*(CLOCKS_PER_SEC/1000);
-	now = then = clock();
-	while( (now-then) < pause )
-		now = clock();
 }
 
 /**
