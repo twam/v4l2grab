@@ -102,6 +102,7 @@ static unsigned int width = 640;
 static unsigned int height = 480;
 static unsigned int fps = 30;
 static int continuous = 0;
+static int period = 0;
 static unsigned char jpegQuality = 70;
 static char* jpegFilename = NULL;
 static char* jpegFilenamePart = NULL;
@@ -390,6 +391,10 @@ static void mainLoop(void)
 
 			if (frameRead())
 				break;
+			
+			if(period > 0) {
+				delay(period);
+			}
 
 			/* EAGAIN - continue select loop. */
 		}
@@ -823,6 +828,19 @@ static void deviceOpen(void)
 }
 
 /**
+	delay (ms)
+*/
+static void delay(int milliseconds) {
+	long pause;
+	clock_t now,then;
+
+	pause = milliseconds*(CLOCKS_PER_SEC/1000);
+	now = then = clock();
+	while( (now-then) < pause )
+		now = clock();
+}
+
+/**
 	print usage information
 */
 static void usage(FILE* fp, int argc, char** argv)
@@ -841,12 +859,13 @@ static void usage(FILE* fp, int argc, char** argv)
 		"-H | --height        Set image height\n"
 		"-I | --interval      Set frame interval (fps) (-1 to skip)\n"
 		"-c | --continuous    Do continous capture, stop with SIGINT.\n"
+		"-p | --period	      Period between captures (in ms) in continuous mode, default 0.\n"
 		"-v | --version       Print version\n"
 		"",
 		argv[0]);
 	}
 
-static const char short_options [] = "d:ho:q:mruW:H:I:vc";
+static const char short_options [] = "d:ho:q:mruW:H:I:vcp:";
 
 static const struct option
 long_options [] = {
@@ -862,6 +881,7 @@ long_options [] = {
 	{ "interval",   required_argument,      NULL,           'I' },
 	{ "version",	no_argument,		NULL,		'v' },
 	{ "continuous",	no_argument,		NULL,		'c' },
+	{ "period",	no_argument,		NULL,		'p' },
 	{ 0, 0, 0, 0 }
 };
 
@@ -946,7 +966,11 @@ int main(int argc, char **argv)
 				continuous = 1;
 				InstallSIGINTHandler();
 				break;
-				
+			
+			case 'p':
+				// set period for continuous capture
+				period = atoi(optarg);
+				break;
 
 			case 'v':
 				printf("Version: %s\n", VERSION);
